@@ -9,7 +9,7 @@
 
 #define RIGHT_LED_PIN 3
 #define RIGHT_LED_WAIT 2
-#define RIGHT_MAX_BRIGHTNESS 120
+#define RIGHT_MAX_BRIGHTNESS 120 
 
 #define LEFT_FRONT_LED_PIN 5
 #define LEFT_BACK_LED_PIN 4
@@ -19,12 +19,14 @@
 #define NUM_LEDS    64
 #define FRAMES_PER_SECOND 60
 #define DEBOUNCE_DELAY 50 
-#define NUMBER_OF_PATTERNS 2
+#define NUMBER_OF_PATTERNS 5
 
 #define SPACE_DELAY 15
 #define TONE_DELAY 10
 #define SHORT_TONE 3
 #define LONG_TONE  8
+
+#define CYLON_FRAMES 1
 
 String DAFT = "-..#.-#..-.#-#";
 String PUNK = ".--.#..-#-.#-.-#";
@@ -36,6 +38,12 @@ int lastEffectButtonState = LOW;
 
 // Control variable for fire pattern
 bool gReverseDirection = false;
+
+// Control variable for cylon pattern
+bool gReverseCylonDirection = false;
+uint8_t cylonHue = 0;
+uint8_t shouldCylonUpdate = 0;
+uint8_t cylonIndex = 0;
 
 // The brightness of all of the LEDs
 int8_t brightness = 20; // Normal 200
@@ -52,6 +60,8 @@ int leftBackStage = 0;
 int leftBackDelay = 0;
 bool leftBackState = false;
 
+uint8_t gHue = 0;
+
 // Index number of which pattern is current
 int8_t gCurrentPatternNumber = 0; 
 
@@ -66,8 +76,18 @@ CRGB RAINBOW[8]={
   CRGB::Red,
 };
 
-CRGB leds[NUM_LEDS];
+CRGB GREEN[8]={
+  CRGB::LawnGreen,
+  CRGB::GreenYellow, 
+  CRGB::SeaGreen,
+  CRGB::ForestGreen,
+  CRGB::DarkSeaGreen,
+  CRGB::DarkGreen,
+  CRGB::OliveDrab,
+  CRGB::Green,
+};
 
+CRGB leds[NUM_LEDS];
 
 void setup() {
   delay(3000); // sanity delay
@@ -79,14 +99,15 @@ void setup() {
   pinMode(RIGHT_LED_PIN, OUTPUT);
 }
 
-
 // List of patterns to cycle through. Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 SimplePatternList gPatterns = { 
-  rainbow, 
+  defaultSprectrum, 
   fire,
+  green,
+  cylon,
+  rainbow,
 };
-
 
 void loop()
 {
@@ -176,18 +197,16 @@ void setSideLedsBrightnesses ()
   leftBackDelay = leftBackDelay - 1;
 }
 
-
 void checkBrightness()
 {
   // Check brightness level
   int potentiometerReading = analogRead(BRIGHTNESS_PIN);
-  int newBrightness = map(potentiometerReading, 0, 1023, 0, 255);
+  int newBrightness = map(potentiometerReading, 0, 1023, 0, 80); //255 
   if (newBrightness != brightness) {
     brightness = newBrightness;
     FastLED.setBrightness(newBrightness);
   }
 }
-
 
 void adjustFanSpeed()
 {
@@ -196,7 +215,6 @@ void adjustFanSpeed()
   
   int currSpeed = map(potentiometerReading, 0, 1023, 0, 255);
   analogWrite(FAN_PIN, currSpeed);
-  
 }
 
 void checkPatternChangePressed()
@@ -221,16 +239,14 @@ void checkPatternChangePressed()
   lastEffectButtonState = effectButtonReading;
 }
 
-
 // ===============================================
 //
 //             LIGHT DISPLAY PATTERNS
 //
 // ===============================================
 
-
 // Default color rainbow color display 
-void rainbow()
+void defaultSprectrum()
 {
     for( int pixelnumber = 0; pixelnumber < NUM_LEDS/2; pixelnumber++) {
       leds[pixelnumber] = RAINBOW[(pixelnumber / 4) % 8];
@@ -238,6 +254,14 @@ void rainbow()
     }
 }
 
+// Green sprectrun color display 
+void green()
+{
+    for( int pixelnumber = 0; pixelnumber < NUM_LEDS/2; pixelnumber++) {
+      leds[pixelnumber] = GREEN[(pixelnumber / 4) % 8];
+      leds[NUM_LEDS - pixelnumber - 1] = GREEN[(pixelnumber / 4) % 8];
+    }
+}
 
 // Duplicated from Fire2012 by Mark Kriegsman slightly modified
 
@@ -246,6 +270,7 @@ void rainbow()
 
 void fire()
 {
+  
   // Array of temperature readings at each simulation cell
   static byte heat[NUM_LEDS];
 
@@ -280,3 +305,61 @@ void fire()
   }
 }
 
+
+void fadeall() { for(int i = 0; i < NUM_LEDS; i++) { leds[i].nscale8(250); } }
+
+void cylon()
+{
+  if (shouldCylonUpdate < CYLON_FRAMES) {
+    shouldCylonUpdate += 1;
+    return;
+  }
+  if (!gReverseCylonDirection)
+  {
+    cylonUp();
+  } else {
+    cylonDown();
+  }
+  if (cylonIndex == 0 || cylonIndex == NUM_LEDS/2) {
+    gReverseCylonDirection = !gReverseCylonDirection;
+  }
+  
+  FastLED.show();
+  fadeall();
+  
+  shouldCylonUpdate = 0;
+}
+
+uint8_t cylonUp() 
+{
+
+  leds[(NUM_LEDS/2) - cylonIndex] = CHSV(cylonHue++, 255, 255);
+  leds[(NUM_LEDS/2) + cylonIndex - 1] = CHSV(cylonHue++, 255, 255);
+
+  ++cylonIndex;
+}
+
+uint8_t cylonDown() 
+{
+
+  leds[(NUM_LEDS/2) -  cylonIndex] = CHSV(cylonHue++, 255, 255);
+  leds[(NUM_LEDS/2) + cylonIndex - 1] = CHSV(cylonHue++, 255, 255);
+
+  --cylonIndex;
+}
+
+void rainbow() 
+{
+   EVERY_N_MILLISECONDS( 20 ) { gHue++; }
+    
+  // FastLED's built-in rainbow generator
+  fill_rainbow( leds, NUM_LEDS, gHue, 7);
+  addGlitter(80);
+}
+
+void addGlitter( fract8 chanceOfGlitter) 
+{
+  if( random8() < chanceOfGlitter) {
+    leds[ random16(NUM_LEDS) ] += CRGB::White;
+  }
+}
